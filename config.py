@@ -43,3 +43,6 @@ CASE_PRIORITY_OPTIONS = ["منخفضة", "متوسطة", "عالية", "عاجل
 
 # --- Client Type Options ---
 CLIENT_TYPE_OPTIONS = ["فرد", "شركة", "مؤسسة"]
+
+# --- Time Entry Categories ---
+TIME_ENTRY_CATEGORIES = ["بحث قانوني", "استشارة", "إعداد مستندات", "مرافعة", "اجتماع", "مراسلات", "أخرى"]

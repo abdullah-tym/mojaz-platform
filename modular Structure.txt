@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 mojaz-platform/
 ├── main_app.py
 ├── config.py
@@ -6,7 +5,7 @@ mojaz-platform/
 ├── pdf_utils.py
 ├── crm_modules.py
 ├── styles.py
-=======
+
 mojaz-platform/
 ├── main_app.py
 ├── config.py
@@ -14,5 +13,4 @@ mojaz-platform/
 ├── pdf_utils.py
 ├── crm_modules.py
 ├── styles.py
->>>>>>> 9f71f07 (Initial commit)
 └── Amiri-Regular.ttf

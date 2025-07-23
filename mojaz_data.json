@@ -5,21 +5,27 @@
             "name": "aa",
             "phone": "aa",
             "email": "",
-            "notes": ""
+            "notes": "",
+            "type": "فرد",
+            "address": ""
         },
         {
             "client_id": 2,
             "name": "aa",
             "phone": "aa",
             "email": "",
-            "notes": ""
+            "notes": "",
+            "type": "فرد",
+            "address": ""
         },
         {
             "client_id": 3,
             "name": "aaa",
             "phone": "aaa",
             "email": "",
-            "notes": ""
+            "notes": "",
+            "type": "فرد",
+            "address": ""
         }
     ],
     "cases": [
@@ -33,7 +39,8 @@
             "opposing_party": "",
             "case_description": "",
             "responsible_lawyer": "",
-            "notes": ""
+            "notes": "",
+            "priority": "متوسطة"
         }
     ],
     "invoices": [
@@ -43,7 +50,8 @@
             "case_id": 0,
             "amount": 5000.0,
             "paid": false,
-            "date": "2025-07-23"
+            "date": "2025-07-23",
+            "due_date": "2025-08-22"
         }
     ],
     "reminders": [
@@ -54,6 +62,12 @@
             "description": "aa",
             "date": "2025-07-24",
             "is_completed": false
+        }
+    ],
+    "users": [
+        {
+            "username": "admin",
+            "password": "admin123"
         }
     ]
 }

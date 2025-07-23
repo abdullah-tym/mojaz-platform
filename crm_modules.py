@@ -3,11 +3,13 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+import json # Import json for serializing/deserializing activity log
 
 # Import necessary functions/constants from other modules
 from config import (
     CASE_TYPE_OPTIONS, CASE_STATUS_OPTIONS, CASE_PRIORITY_OPTIONS,
-    REMINDER_RELATED_TYPES, PAYMENT_STATUS_OPTIONS, CLIENT_TYPE_OPTIONS
+    REMINDER_RELATED_TYPES, PAYMENT_STATUS_OPTIONS, CLIENT_TYPE_OPTIONS,
+    TIME_ENTRY_CATEGORIES
 )
 from pdf_utils import reshape_arabic # Assuming reshape_arabic is needed here too
 
@@ -27,21 +29,18 @@ def render_client_management(next_id_func, save_data_func, reshape_arabic_func):
             with col_c_add2:
                 new_client_email = st.text_input("البريد الإلكتروني", key="crm_new_client_email_input")
                 new_client_address = st.text_area("العنوان", key="crm_new_client_address_input")
+                new_client_company_name = st.text_input("اسم الشركة (إن وجد)", key="crm_new_client_company_name_input")
+                new_client_secondary_contact = st.text_input("جهة اتصال ثانوية (اسم/هاتف)", key="crm_new_client_secondary_contact_input")
                 new_client_notes = st.text_area("ملاحظات إضافية", key="crm_new_client_notes_input")
             
             submitted_client = st.form_submit_button("➕ حفظ العميل")
             if submitted_client:
                 if new_client_name and new_client_phone:
                     cid = next_id_func(st.session_state.clients, "client_id")
-                    st.session_state.clients.loc[len(st.session_state.clients)] = [cid, new_client_name, new_client_phone, new_client_email, new_client_notes]
-                    # Add new fields to DataFrame if they don't exist
-                    if 'type' not in st.session_state.clients.columns:
-                        st.session_state.clients['type'] = None
-                    if 'address' not in st.session_state.clients.columns:
-                        st.session_state.clients['address'] = None
-                    st.session_state.clients.loc[st.session_state.clients['client_id'] == cid, 'type'] = new_client_type
-                    st.session_state.clients.loc[st.session_state.clients['client_id'] == cid, 'address'] = new_client_address
-
+                    st.session_state.clients.loc[len(st.session_state.clients)] = [
+                        cid, new_client_name, new_client_phone, new_client_email, new_client_notes,
+                        new_client_type, new_client_address, new_client_company_name, new_client_secondary_contact
+                    ]
                     save_data_func()
                     st.success(f"✅ تم إضافة العميل: {reshape_arabic_func(new_client_name)} بنجاح!")
                     st.rerun()
@@ -54,7 +53,7 @@ def render_client_management(next_id_func, save_data_func, reshape_arabic_func):
         df_clients_display = st.session_state.clients.copy()
         df_clients_display = df_clients_display.rename(columns={
             "name": "الاسم", "phone": "الهاتف", "email": "البريد الإلكتروني", "notes": "ملاحظات",
-            "type": "النوع", "address": "العنوان"
+            "type": "النوع", "address": "العنوان", "company_name": "اسم الشركة", "secondary_contact": "جهة اتصال ثانوية"
         })
         
         search_client = st.text_input("ابحث عن عميل (بالاسم أو الهاتف أو البريد الإلكتروني أو العنوان)", "", key="crm_search_client_input")
@@ -62,7 +61,8 @@ def render_client_management(next_id_func, save_data_func, reshape_arabic_func):
             df_clients_display["الاسم"].astype(str).str.contains(search_client, case=False, na=False) |
             df_clients_display["الهاتف"].astype(str).str.contains(search_client, case=False, na=False) |
             df_clients_display["البريد الإلكتروني"].astype(str).str.contains(search_client, case=False, na=False) |
-            df_clients_display["العنوان"].astype(str).str.contains(search_client, case=False, na=False)
+            df_clients_display["العنوان"].astype(str).str.contains(search_client, case=False, na=False) |
+            df_clients_display["اسم الشركة"].astype(str).str.contains(search_client, case=False, na=False)
         ]
         
         st.dataframe(filtered_clients.set_index("client_id"))
@@ -87,6 +87,8 @@ def render_client_management(next_id_func, save_data_func, reshape_arabic_func):
                 with col_c_edit2:
                     edited_client_email = st.text_input("البريد الإلكتروني", value=current_client_data["email"], key="crm_edited_client_email_input")
                     edited_client_address = st.text_area("العنوان", value=current_client_data.get("address", ""), key="crm_edited_client_address_input")
+                    edited_client_company_name = st.text_input("اسم الشركة (إن وجد)", value=current_client_data.get("company_name", ""), key="crm_edited_client_company_name_input")
+                    edited_client_secondary_contact = st.text_input("جهة اتصال ثانوية (اسم/هاتف)", value=current_client_data.get("secondary_contact", ""), key="crm_edited_client_secondary_contact_input")
                     edited_client_notes = st.text_area("ملاحظات", value=current_client_data["notes"], key="crm_edited_client_notes_input")
                 
                 col_buttons = st.columns(2)
@@ -96,8 +98,10 @@ def render_client_management(next_id_func, save_data_func, reshape_arabic_func):
                     delete_client_button = st.form_submit_button("🗑️ حذف العميل")
 
                 if update_client_button:
-                    st.session_state.clients.loc[st.session_state.clients["client_id"] == client_to_edit_id, ["name", "phone", "email", "notes", "type", "address"]] = \
-                        [edited_client_name, edited_client_phone, edited_client_email, edited_client_notes, edited_client_type, edited_client_address]
+                    st.session_state.clients.loc[st.session_state.clients["client_id"] == client_to_edit_id, 
+                        ["name", "phone", "email", "notes", "type", "address", "company_name", "secondary_contact"]] = \
+                        [edited_client_name, edited_client_phone, edited_client_email, edited_client_notes, 
+                         edited_client_type, edited_client_address, edited_client_company_name, edited_client_secondary_contact]
                     save_data_func()
                     st.success(f"✅ تم تحديث بيانات العميل: {reshape_arabic_func(edited_client_name)}.")
                     st.rerun()
@@ -105,8 +109,9 @@ def render_client_management(next_id_func, save_data_func, reshape_arabic_func):
                 if delete_client_button:
                     if any(st.session_state.cases["client_id"] == client_to_edit_id) or \
                        any(st.session_state.invoices["client_id"] == client_to_edit_id) or \
-                       any((st.session_state.reminders["related_type"] == "عميل") & (st.session_state.reminders["related_id"] == client_to_edit_id)):
-                        st.warning("⚠️ لا يمكن حذف هذا العميل لوجود قضايا، فواتير أو تذكيرات مرتبطة به. يرجى حذفها أولاً.")
+                       any((st.session_state.reminders["related_type"] == "عميل") & (st.session_state.reminders["related_id"] == client_to_edit_id)) or \
+                       any(st.session_state.time_entries["client_id"] == client_to_edit_id): # Check time entries too
+                        st.warning("⚠️ لا يمكن حذف هذا العميل لوجود قضايا، فواتير، تذكيرات أو سجلات وقت مرتبطة به. يرجى حذفها أولاً.")
                     else:
                         st.session_state.clients = st.session_state.clients[st.session_state.clients["client_id"] != client_to_edit_id]
                         save_data_func()
@@ -151,13 +156,8 @@ def render_case_management(next_id_func, save_data_func, reshape_arabic_func):
                         st.session_state.cases.loc[len(st.session_state.cases)] = [
                             cid, client_id_for_case, new_case_name, new_case_type, new_case_status, 
                             new_court_date, new_opposing_party, new_case_description, 
-                            new_responsible_lawyer, new_case_notes
+                            new_responsible_lawyer, new_case_notes, new_case_priority, [] # Initialize empty activity log
                         ]
-                        # Add new fields if they don't exist
-                        if 'priority' not in st.session_state.cases.columns:
-                            st.session_state.cases['priority'] = None
-                        st.session_state.cases.loc[st.session_state.cases['case_id'] == cid, 'priority'] = new_case_priority
-
                         save_data_func()
                         st.success(f"✅ تم إضافة القضية: {reshape_arabic_func(new_case_name)} بنجاح!")
                         st.rerun()
@@ -186,10 +186,10 @@ def render_case_management(next_id_func, save_data_func, reshape_arabic_func):
             
             st.dataframe(filtered_cases[["case_id", "اسم القضية", "العميل", "نوع القضية", "الحالة", "تاريخ الجلسة", "الطرف الخصم", "المحامي المسؤول", "الأولوية"]].set_index("case_id"))
 
-            st.markdown("### ✏️ تعديل / حذف قضية")
+            st.markdown("### ✏️ تعديل / حذف قضية / سجل الأنشطة")
             if not filtered_cases.empty:
                 case_to_edit_id = st.selectbox(
-                    "اختر القضية للتعديل أو الحذف", 
+                    "اختر القضية للتعديل أو الحذف أو إضافة نشاط", 
                     filtered_cases["case_id"].tolist(), 
                     format_func=lambda x: f"{x} - {st.session_state.cases[st.session_state.cases['case_id'] == x]['case_name'].iloc[0]}",
                     key="crm_select_case_to_edit"
@@ -237,8 +237,9 @@ def render_case_management(next_id_func, save_data_func, reshape_arabic_func):
 
                     if delete_case_button:
                         if any(st.session_state.invoices["case_id"] == case_to_edit_id) or \
-                           any((st.session_state.reminders["related_type"] == "قضية") & (st.session_state.reminders["related_id"] == case_to_edit_id)):
-                            st.warning("⚠️ لا يمكن حذف هذه القضية لوجود فواتير أو تذكيرات مرتبطة بها. يرجى حذفها أولاً.")
+                           any((st.session_state.reminders["related_type"] == "قضية") & (st.session_state.reminders["related_id"] == case_to_edit_id)) or \
+                           any(st.session_state.time_entries["case_id"] == case_to_edit_id): # Check time entries too
+                            st.warning("⚠️ لا يمكن حذف هذه القضية لوجود فواتير، تذكيرات أو سجلات وقت مرتبطة بها. يرجى حذفها أولاً.")
                         else:
                             st.session_state.cases = st.session_state.cases[st.session_state.cases["case_id"] != case_to_edit_id]
                             save_data_func()
@@ -246,6 +247,48 @@ def render_case_management(next_id_func, save_data_func, reshape_arabic_func):
                             st.rerun()
             else:
                 st.info("لا توجد قضايا لعرضها. يرجى إضافة قضية أولاً.")
+        
+        st.markdown("---")
+        st.markdown("### 📝 سجل الأنشطة للقضية")
+        if not st.session_state.cases.empty:
+            case_for_activity_id = st.selectbox(
+                "اختر القضية لإضافة/عرض الأنشطة:",
+                st.session_state.cases["case_id"].tolist(),
+                format_func=lambda x: f"{x} - {st.session_state.cases[st.session_state.cases['case_id'] == x]['case_name'].iloc[0]}",
+                key="crm_select_case_for_activity"
+            )
+            current_case_activity_log = st.session_state.cases[st.session_state.cases["case_id"] == case_for_activity_id]["activity_log"].iloc[0]
+
+            with st.form("add_activity_form", clear_on_submit=True):
+                new_activity_description = st.text_area("أضف نشاطاً جديداً:", key="crm_new_activity_description")
+                add_activity_button = st.form_submit_button("إضافة نشاط")
+
+                if add_activity_button and new_activity_description:
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    new_activity = {"timestamp": timestamp, "description": new_activity_description}
+                    
+                    # Ensure activity_log is a list
+                    if not isinstance(current_case_activity_log, list):
+                        current_case_activity_log = []
+                    
+                    current_case_activity_log.append(new_activity)
+                    st.session_state.cases.loc[st.session_state.cases["case_id"] == case_for_activity_id, "activity_log"] = [current_case_activity_log]
+                    save_data_func()
+                    st.success("✅ تم إضافة النشاط بنجاح!")
+                    st.rerun()
+                elif add_activity_button:
+                    st.warning("الرجاء إدخال وصف للنشاط.")
+
+            st.markdown("#### سجل الأنشطة:")
+            if current_case_activity_log:
+                # Display activities in reverse chronological order
+                for activity in reversed(current_case_activity_log):
+                    st.markdown(f"- **{reshape_arabic_func(activity['timestamp'])}**: {reshape_arabic_func(activity['description'])}")
+            else:
+                st.info("لا توجد أنشطة مسجلة لهذه القضية بعد.")
+        else:
+            st.info("لا توجد قضايا لعرض سجل الأنشطة.")
+
 
 # --- Reminder Management Functions and UI ---
 def render_reminder_management(next_id_func, save_data_func, reshape_arabic_func):
@@ -399,11 +442,6 @@ def render_invoice_management(next_id_func, save_data_func, reshape_arabic_func)
                             iid, client_id_for_inv, case_id_for_inv, new_invoice_amount, 
                             new_invoice_paid, new_invoice_date, new_invoice_due_date
                         ]
-                        # Add new fields if they don't exist
-                        if 'due_date' not in st.session_state.invoices.columns:
-                            st.session_state.invoices['due_date'] = None
-                        st.session_state.invoices.loc[st.session_state.invoices['invoice_id'] == iid, 'due_date'] = new_invoice_due_date
-
                         save_data_func()
                         st.success(f"✅ تم إضافة فاتورة بمبلغ: {new_invoice_amount:,.2f} ر.س بنجاح!")
                         st.rerun()
@@ -477,3 +515,106 @@ def render_invoice_management(next_id_func, save_data_func, reshape_arabic_func)
                 st.info("لا توجد فواتير لعرضها. يرجى إضافة فاتورة أولاً.")
         else:
             st.info("لا توجد فواتير لعرضها.")
+
+# --- Time Tracking Functions and UI (NEW) ---
+def render_time_tracking(next_id_func, save_data_func, reshape_arabic_func):
+    """Renders the UI for time tracking."""
+    st.header("⏱️ تسجيل الوقت")
+    st.markdown("سجل الوقت المستغرق في الأنشطة المختلفة المرتبطة بالعملاء والقضايا.")
+
+    if st.session_state.clients.empty:
+        st.warning("⚠️ لا يمكن تسجيل الوقت. يرجى إضافة عميل واحد على الأقل في صفحة 'العملاء' أولاً.")
+    else:
+        with st.expander("➕ إضافة سجل وقت جديد", expanded=False):
+            with st.form("add_time_entry_form", clear_on_submit=True):
+                client_names_time = st.session_state.clients["name"].tolist()
+                selected_client_name_time = st.selectbox("اختر العميل", client_names_time, key="crm_time_client_select")
+                client_id_for_time = st.session_state.clients[st.session_state.clients["name"] == selected_client_name_time]["client_id"].iloc[0]
+
+                cases_for_client_time = st.session_state.cases[st.session_state.cases["client_id"] == client_id_for_time]
+                case_options_time = [""] + cases_for_client_time["case_name"].tolist() if not cases_for_client_time.empty else [""]
+                selected_case_name_time = st.selectbox("الربط بقضية (اختياري)", case_options_time, key="crm_time_case_select")
+                case_id_for_time = None
+                if selected_case_name_time and not cases_for_client_time.empty:
+                    case_id_for_time = cases_for_client_time[cases_for_client_time["case_name"] == selected_case_name_time]["case_id"].iloc[0]
+
+                col_time1, col_time2 = st.columns(2)
+                with col_time1:
+                    new_time_date = st.date_input("التاريخ", datetime.today(), key="crm_new_time_date_input")
+                    new_time_hours = st.number_input("الساعات (مثال: 1.5)", min_value=0.0, step=0.25, format="%.2f", key="crm_new_time_hours_input")
+                with col_time2:
+                    new_time_category = st.selectbox("الفئة", TIME_ENTRY_CATEGORIES, key="crm_new_time_category_select")
+                
+                new_time_description = st.text_area("وصف النشاط", key="crm_new_time_description_input")
+
+                submitted_time_entry = st.form_submit_button("➕ حفظ سجل الوقت")
+                if submitted_time_entry:
+                    if new_time_hours > 0 and new_time_description:
+                        tid = next_id_func(st.session_state.time_entries, "entry_id")
+                        st.session_state.time_entries.loc[len(st.session_state.time_entries)] = [
+                            tid, client_id_for_time, case_id_for_time, new_time_date, 
+                            new_time_hours, new_time_category, new_time_description
+                        ]
+                        save_data_func()
+                        st.success(f"✅ تم تسجيل {new_time_hours} ساعة بنجاح!")
+                        st.rerun()
+                    else:
+                        st.warning("الرجاء إدخال الساعات ووصف النشاط.")
+        
+        st.markdown("---")
+        st.markdown("### 📋 سجلات الوقت")
+        if not st.session_state.time_entries.empty:
+            df_time_entries_display = st.session_state.time_entries.copy()
+            df_time_entries_display = df_time_entries_display.merge(st.session_state.clients[["client_id", "name"]], on="client_id", how="left", suffixes=('_time', '_client'))
+            
+            if 'case_id' in df_time_entries_display.columns and not st.session_state.cases.empty:
+                df_time_entries_display = df_time_entries_display.merge(st.session_state.cases[["case_id", "case_name"]], on="case_id", how="left", suffixes=('_time', '_case'))
+            else:
+                 df_time_entries_display['case_name'] = None
+
+            df_time_entries_display = df_time_entries_display.rename(columns={
+                "name": "العميل", "case_name": "القضية المرتبطة", "date": "التاريخ", 
+                "hours": "الساعات", "category": "الفئة", "description": "الوصف"
+            })
+            
+            st.dataframe(df_time_entries_display[["entry_id", "العميل", "القضية المرتبطة", "التاريخ", "الساعات", "الفئة", "الوصف"]].set_index("entry_id"))
+
+            st.markdown("### ✏️ تعديل / حذف سجل وقت")
+            if not df_time_entries_display.empty:
+                time_entry_to_edit_id = st.selectbox(
+                    "اختر سجل الوقت للتعديل أو الحذف", 
+                    df_time_entries_display["entry_id"].tolist(), 
+                    format_func=lambda x: f"{x} - {st.session_state.time_entries[st.session_state.time_entries['entry_id'] == x]['description'].iloc[0]}",
+                    key="crm_select_time_entry_to_edit"
+                )
+                current_time_entry_data = st.session_state.time_entries[st.session_state.time_entries["entry_id"] == time_entry_to_edit_id].iloc[0]
+
+                with st.form("edit_time_entry_form"):
+                    edited_time_date = st.date_input("التاريخ", value=current_time_entry_data["date"], key="crm_edited_time_date_input")
+                    edited_time_hours = st.number_input("الساعات (مثال: 1.5)", value=float(current_time_entry_data["hours"]), min_value=0.0, step=0.25, format="%.2f", key="crm_edited_time_hours_input")
+                    edited_time_category = st.selectbox("الفئة", TIME_ENTRY_CATEGORIES, index=TIME_ENTRY_CATEGORIES.index(current_time_entry_data["category"]), key="crm_edited_time_category_select")
+                    edited_time_description = st.text_area("وصف النشاط", value=current_time_entry_data["description"], key="crm_edited_time_description_input")
+
+                    col_time_buttons = st.columns(2)
+                    with col_time_buttons[0]:
+                        update_time_button = st.form_submit_button("💾 تحديث سجل الوقت")
+                    with col_time_buttons[1]:
+                        delete_time_button = st.form_submit_button("🗑️ حذف سجل الوقت")
+
+                    if update_time_button:
+                        st.session_state.time_entries.loc[st.session_state.time_entries["entry_id"] == time_entry_to_edit_id, 
+                            ["date", "hours", "category", "description"]] = \
+                            [edited_time_date, edited_time_hours, edited_time_category, edited_time_description]
+                        save_data_func()
+                        st.success(f"✅ تم تحديث سجل الوقت رقم {time_entry_to_edit_id}.")
+                        st.rerun()
+
+                    if delete_time_button:
+                        st.session_state.time_entries = st.session_state.time_entries[st.session_state.time_entries["entry_id"] != time_entry_to_edit_id]
+                        save_data_func()
+                        st.success(f"🗑️ تم حذف سجل الوقت رقم {time_entry_to_edit_id}.")
+                        st.rerun()
+            else:
+                st.info("لا توجد سجلات وقت لعرضها. يرجى إضافة سجل وقت أولاً.")
+        else:
+            st.info("لا توجد سجلات وقت لعرضها.")

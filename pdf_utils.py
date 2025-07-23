@@ -198,4 +198,7 @@ def generate_contract_pdf(contract_type, data, signature_img_data=None, stamp_fi
             if tmp_stamp_path and os.path.exists(tmp_stamp_path):
                 os.unlink(tmp_stamp_path)
 
-    return bytes(pdf.output(dest="S"))
+    pdf_output_raw = pdf.output(dest="S")
+    if isinstance(pdf_output_raw, str):
+        return pdf_output_raw.encode("latin-1") # Explicitly encode if it's a string
+    return bytes(pdf_output_raw) # Convert to bytes if it's bytearray or already bytes
