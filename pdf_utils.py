@@ -101,8 +101,13 @@ def generate_contract_pdf(contract_type, data, signature_img_data=None, stamp_fi
             f"طبيعة المعلومات المشمولة بالسرية: {data.get('scope', 'غير محدد')}."
         ]
     
+    # Calculate effective page width for multi_cell
+    # pdf.w is page width, pdf.l_margin is left margin, pdf.r_margin is right margin
+    effective_width = pdf.w - pdf.l_margin - pdf.r_margin
+
     for line in content_lines:
-        pdf.multi_cell(0, 10, txt=reshape_arabic(line), align="R")
+        # Use the calculated effective_width for multi_cell
+        pdf.multi_cell(effective_width, 10, txt=reshape_arabic(line), align="R")
     
     pdf.ln(20)
 
