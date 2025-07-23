@@ -4,6 +4,7 @@ plotly
 openpyxl
 fpdf
 pdfkit  # optional; keep if you generate PDFs using wkhtmltopdf
+fpdf2>=2.7.6
 
 arabic_reshaper
 python-bidi
