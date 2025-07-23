@@ -1,11 +1,12 @@
 import streamlit as st
 from datetime import datetime, timedelta
 import pandas as pd
-import base64 # Needed for PDF display
-from streamlit_drawable_canvas import st_canvas # Correctly imported
+import base64
+from streamlit_drawable_canvas import st_canvas
+import plotly.express as px # For charts
 
 # Import modular components
-from config import DATA_FILE, AMIRI_FONT_NAME, AMIRI_FONT_PATH, CONTRACT_TYPE_OPTIONS
+from config import DATA_FILE, AMIRI_FONT_NAME, AMIRI_FONT_PATH, CONTRACT_TYPE_OPTIONS, CASE_STATUS_OPTIONS
 from data_persistence import load_data, save_data
 from pdf_utils import generate_contract_pdf, reshape_arabic, get_font_path
 from crm_modules import (
@@ -14,7 +15,8 @@ from crm_modules import (
     render_reminder_management,
     render_invoice_management
 )
-from styles import custom_css # Import the CSS string
+from styles import custom_css
+from auth import authenticate_user # Import authentication function
 
 # --- Streamlit Page Configuration ---
 st.set_page_config(
@@ -32,23 +34,27 @@ st.set_page_config(
 st.markdown(custom_css, unsafe_allow_html=True)
 
 # --- Initialize Session State and Load Data ---
-# This function is defined in data_persistence.py and loads data into st.session_state
 load_data()
 
-# --- Helper for ID Generation (could be in utils.py if more general) ---
+# --- Helper for ID Generation ---
 def next_id(df, col):
     """Generates the next sequential ID for a DataFrame."""
     if df.empty:
         return 1
     return df[col].max() + 1
 
-# --- Main Application Layout ---
+# --- Authentication Check ---
+if not authenticate_user():
+    st.stop() # Stop execution if user is not authenticated
+
+# --- Main Application Layout (visible only after authentication) ---
 st.title("🧑‍⚖️ موجز - إدارة العقود والمحاماة")
 
-# --- Dashboard KPIs ---
+# --- Dashboard KPIs & Charts ---
 st.markdown("---")
 st.header("📊 لوحة المعلومات")
-col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4) # Added one more column for KPI
+
+col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
 with col_kpi1:
     st.markdown(f'<div class="kpi-box">إجمالي العملاء<br><strong>{len(st.session_state.clients)}</strong></div>', unsafe_allow_html=True)
 with col_kpi2:
@@ -58,7 +64,6 @@ with col_kpi3:
     total_paid = st.session_state.invoices[st.session_state.invoices["paid"]]["amount"].sum() if not st.session_state.invoices.empty else 0
     st.markdown(f'<div class="kpi-box">المبالغ المحصلة<br><strong>{total_paid:,.2f} ر.س</strong></div>', unsafe_allow_html=True)
 with col_kpi4:
-    # Calculate upcoming reminders
     upcoming_reminders_count = st.session_state.reminders[
         (st.session_state.reminders['date'] >= datetime.today().date()) &
         (st.session_state.reminders['is_completed'] == False)
@@ -66,8 +71,38 @@ with col_kpi4:
     st.markdown(f'<div class="kpi-box">تذكيرات قادمة<br><strong>{upcoming_reminders_count}</strong></div>', unsafe_allow_html=True)
 st.markdown("---")
 
+# --- Dashboard Charts ---
+st.subheader("📈 نظرة عامة بيانية")
+chart_col1, chart_col2 = st.columns(2)
+
+with chart_col1:
+    st.markdown("#### توزيع القضايا حسب الحالة")
+    if not st.session_state.cases.empty:
+        case_status_counts = st.session_state.cases['status'].value_counts().reset_index()
+        case_status_counts.columns = ['الحالة', 'العدد']
+        fig_cases_status = px.pie(case_status_counts, values='العدد', names='الحالة', title='توزيع القضايا',
+                                  color_discrete_sequence=px.colors.qualitative.Pastel)
+        fig_cases_status.update_traces(textposition='inside', textinfo='percent+label')
+        st.plotly_chart(fig_cases_status, use_container_width=True)
+    else:
+        st.info("لا توجد قضايا لعرض الرسوم البيانية.")
+
+with chart_col2:
+    st.markdown("#### حالة الفواتير")
+    if not st.session_state.invoices.empty:
+        invoice_status_counts = st.session_state.invoices['paid'].value_counts().reset_index()
+        invoice_status_counts.columns = ['Paid', 'Count']
+        invoice_status_counts['Paid'] = invoice_status_counts['Paid'].map({True: 'مدفوعة', False: 'غير مدفوعة'})
+        fig_invoices_status = px.bar(invoice_status_counts, x='Paid', y='Count', title='حالة الفواتير',
+                                     color='Paid', color_discrete_map={'مدفوعة': '#28a745', 'غير مدفوعة': '#dc3545'})
+        st.plotly_chart(fig_invoices_status, use_container_width=True)
+    else:
+        st.info("لا توجد فواتير لعرض الرسوم البيانية.")
+
+st.markdown("---")
+
 # --- Main Tabs for Application Modules ---
-tab1, tab2 = st.tabs(["📄 مولد العقود (MojazContracts)", "⚖️ نظام إدارة القضايا (MojazLegalCRM)"])
+tab1, tab2, tab3 = st.tabs(["📄 مولد العقود (MojazContracts)", "⚖️ نظام إدارة القضايا (MojazLegalCRM)", "🧠 الذكاء الاصطناعي (AI Insights)"])
 
 with tab1:
     st.subheader("📄 مولد العقود القانونية")
@@ -150,9 +185,8 @@ with tab1:
                 stroke_color="#000000",
                 background_color="#ffffff",
                 height=150,
-                # width=300, # Removed width as requested
                 drawing_mode="freedraw",
-                key=f"tab1_canvas_signature_main_contract_{selected_contract_type_ar}", # Unique key for this tab
+                key=f"tab1_canvas_signature_main_contract_{selected_contract_type_ar}",
             )
             st.markdown('</div>', unsafe_allow_html=True)
         
@@ -181,22 +215,20 @@ with tab1:
             contract_data_for_pdf = {
                 "party1": party1_name,
                 "party2": party2_name,
-                "date": contract_date, # Pass as date object to PDF function
+                "date": contract_date,
                 **contract_details
             }
             
             signature_image_array = None
             if signature_data and signature_data.image_data is not None:
-                # Check if the drawn canvas is mostly white (empty)
                 if signature_data.image_data.sum() < (signature_data.image_data.size * 255 * 3) * 0.98:
                     signature_image_array = signature_data.image_data
                 else:
                     st.info("لم يتم اكتشاف توقيع واضح. سيتم إنشاء العقد بدون توقيع.")
 
-
             stamp_image_bytes = None
             if company_stamp_file:
-                stamp_image_bytes = company_stamp_file # Pass the file object directly
+                stamp_image_bytes = company_stamp_file
 
             try:
                 pdf_bytes_output = generate_contract_pdf(
@@ -232,7 +264,7 @@ with tab1:
 
             except Exception as e:
                 st.error(f"حدث خطأ أثناء توليد العقد: {e}")
-                st.exception(e) # Display full traceback for debugging (can be commented out in production)
+                st.exception(e)
 
 
 # --- CRM Tab (Delegated to crm_modules.py) ---
@@ -240,7 +272,6 @@ with tab2:
     st.subheader("⚖️ نظام إدارة القضايا والعملاء (CRM)")
     st.markdown("نظام متكامل لإدارة بيانات العملاء، القضايا، التذكيرات، والفواتير المرتبطة.")
 
-    # Render CRM modules using functions from crm_modules.py
     clients_tab, cases_tab, reminders_tab, invoices_tab = st.tabs(["👥 العملاء", "⚖️ القضايا", "⏰ التذكيرات", "💰 الفواتير"])
 
     with clients_tab:
@@ -254,3 +285,82 @@ with tab2:
 
     with invoices_tab:
         render_invoice_management(next_id, save_data, reshape_arabic)
+
+# --- AI Insights Tab (NEW) ---
+with tab3:
+    st.subheader("🧠 الذكاء الاصطناعي (AI Insights)")
+    st.markdown("استكشف كيف يمكن للذكاء الاصطناعي تعزيز إدارة العقود والقضايا لديك.")
+
+    st.info("هذا القسم يوضح إمكانيات التكامل المستقبلي للذكاء الاصطناعي. الميزات أدناه هي مفاهيمية ولا تتطلب اتصالات API حقيقية في هذا الإصدار التجريبي.")
+
+    ai_feature = st.selectbox(
+        "اختر ميزة الذكاء الاصطناعي لاستكشافها:",
+        ["تحليل العقود الذكي", "ملخصات القضايا التلقائية", "التنبؤ بنتائج القضايا", "مساعد البحث القانوني"],
+        key="ai_feature_select"
+    )
+
+    if ai_feature == "تحليل العقود الذكي":
+        st.markdown("#### 📄 تحليل العقود الذكي")
+        st.write("يمكن للذكاء الاصطناعي مراجعة العقود لتحديد البنود الرئيسية، المخاطر المحتملة، والتناقضات، مما يوفر الوقت ويقلل الأخطاء.")
+        st.file_uploader("قم بتحميل ملف عقد (PDF/DOCX) للتحليل (ميزة مفاهيمية)", type=["pdf", "docx"], key="ai_contract_uploader")
+        st.button("بدء التحليل (ميزة مفاهيمية)", key="ai_analyze_button")
+        st.markdown("""
+        <div style="background-color: #f0f2f6; padding: 15px; border-radius: 8px; margin-top: 20px;">
+            <strong>نتائج التحليل المقترحة:</strong>
+            <ul>
+                <li>تحديد الأطراف والتواريخ الرئيسية.</li>
+                <li>استخراج الالتزامات والحقوق لكل طرف.</li>
+                <li>تحديد البنود الغامضة أو التي قد تتطلب مراجعة.</li>
+                <li>اقتراح بنود قياسية مفقودة.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+    elif ai_feature == "ملخصات القضايا التلقائية":
+        st.markdown("#### 📝 ملخصات القضايا التلقائية")
+        st.write("يقوم الذكاء الاصطناعي بتلخيص الوثائق القانونية الطويلة أو سجلات القضايا، مما يساعد المحامين على فهم النقاط الأساسية بسرعة.")
+        
+        if not st.session_state.cases.empty:
+            case_names_for_ai = st.session_state.cases['case_name'].tolist()
+            selected_case_for_summary = st.selectbox("اختر قضية لتلخيصها (ميزة مفاهيمية)", case_names_for_ai, key="ai_case_summary_select")
+            st.button(f"توليد ملخص للقضية: {selected_case_for_summary} (ميزة مفاهيمية)", key="ai_summarize_button")
+            st.markdown("""
+            <div style="background-color: #f0f2f6; padding: 15px; border-radius: 8px; margin-top: 20px;">
+                <strong>ملخص مقترح:</strong>
+                <p>هذا ملخص تلقائي للقضية المختارة، يبرز الوقائع الأساسية، الأطراف المعنية، والوضع القانوني الحالي، بالإضافة إلى أي تطورات حديثة.</p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.info("أضف قضايا في قسم 'إدارة القضايا' لتجربة هذه الميزة المفاهيمية.")
+
+    elif ai_feature == "التنبؤ بنتائج القضايا":
+        st.markdown("#### 🔮 التنبؤ بنتائج القضايا")
+        st.write("باستخدام بيانات القضايا التاريخية، يمكن للذكاء الاصطناعي تقديم تقديرات لاحتمالية نجاح أو فشل قضية معينة، بناءً على عوامل متعددة.")
+        st.warning("⚠️ هذه الميزة تتطلب كميات كبيرة من البيانات التاريخية الدقيقة وتستخدم لأغراض استشارية فقط.")
+        st.button("الحصول على تنبؤ (ميزة مفاهيمية)", key="ai_predict_button")
+        st.markdown("""
+        <div style="background-color: #f0f2f6; padding: 15px; border-radius: 8px; margin-top: 20px;">
+            <strong>تنبؤ مقترح:</strong>
+            <ul>
+                <li>احتمالية النجاح: 75%</li>
+                <li>المخاطر الرئيسية: عدم كفاية الأدلة في النقطة X.</li>
+                <li>العوامل الإيجابية: سابقة قضائية قوية في قضية مشابهة.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+    elif ai_feature == "مساعد البحث القانوني":
+        st.markdown("#### 📚 مساعد البحث القانوني")
+        st.write("يمكن للذكاء الاصطناعي المساعدة في البحث عن السوابق القضائية، المواد القانونية، والآراء الفقهية ذات الصلة بقضية معينة، مما يسرع عملية البحث القانوني.")
+        st.text_area("أدخل استفسارك القانوني (ميزة مفاهيمية)", height=100, key="ai_legal_query")
+        st.button("بحث (ميزة مفاهيمية)", key="ai_search_button")
+        st.markdown("""
+        <div style="background-color: #f0f2f6; padding: 15px; border-radius: 8px; margin-top: 20px;">
+            <strong>نتائج البحث المقترحة:</strong>
+            <ul>
+                <li>مرجع قانوني: المادة X من نظام Y.</li>
+                <li>سابقة قضائية: الحكم رقم Z في القضية A.</li>
+                <li>رأي فقهي: رأي الدكتور B حول المسألة C.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)

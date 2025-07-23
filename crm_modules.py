@@ -6,17 +6,10 @@ from datetime import datetime, timedelta
 
 # Import necessary functions/constants from other modules
 from config import (
-    CASE_TYPE_OPTIONS, CASE_STATUS_OPTIONS,
-    REMINDER_RELATED_TYPES, PAYMENT_STATUS_OPTIONS
+    CASE_TYPE_OPTIONS, CASE_STATUS_OPTIONS, CASE_PRIORITY_OPTIONS,
+    REMINDER_RELATED_TYPES, PAYMENT_STATUS_OPTIONS, CLIENT_TYPE_OPTIONS
 )
 from pdf_utils import reshape_arabic # Assuming reshape_arabic is needed here too
-
-# --- Helper for ID Generation (re-defined here for modularity, or import from utils if created) ---
-def next_id_local(df, col):
-    """Generates the next sequential ID for a DataFrame."""
-    if df.empty:
-        return 1
-    return df[col].max() + 1
 
 # --- Client Management Functions and UI ---
 def render_client_management(next_id_func, save_data_func, reshape_arabic_func):
@@ -30,8 +23,10 @@ def render_client_management(next_id_func, save_data_func, reshape_arabic_func):
             with col_c_add1:
                 new_client_name = st.text_input("اسم العميل", key="crm_new_client_name_input")
                 new_client_phone = st.text_input("رقم الهاتف", key="crm_new_client_phone_input")
+                new_client_type = st.selectbox("نوع العميل", CLIENT_TYPE_OPTIONS, key="crm_new_client_type_select")
             with col_c_add2:
                 new_client_email = st.text_input("البريد الإلكتروني", key="crm_new_client_email_input")
+                new_client_address = st.text_area("العنوان", key="crm_new_client_address_input")
                 new_client_notes = st.text_area("ملاحظات إضافية", key="crm_new_client_notes_input")
             
             submitted_client = st.form_submit_button("➕ حفظ العميل")
@@ -39,6 +34,14 @@ def render_client_management(next_id_func, save_data_func, reshape_arabic_func):
                 if new_client_name and new_client_phone:
                     cid = next_id_func(st.session_state.clients, "client_id")
                     st.session_state.clients.loc[len(st.session_state.clients)] = [cid, new_client_name, new_client_phone, new_client_email, new_client_notes]
+                    # Add new fields to DataFrame if they don't exist
+                    if 'type' not in st.session_state.clients.columns:
+                        st.session_state.clients['type'] = None
+                    if 'address' not in st.session_state.clients.columns:
+                        st.session_state.clients['address'] = None
+                    st.session_state.clients.loc[st.session_state.clients['client_id'] == cid, 'type'] = new_client_type
+                    st.session_state.clients.loc[st.session_state.clients['client_id'] == cid, 'address'] = new_client_address
+
                     save_data_func()
                     st.success(f"✅ تم إضافة العميل: {reshape_arabic_func(new_client_name)} بنجاح!")
                     st.rerun()
@@ -50,14 +53,16 @@ def render_client_management(next_id_func, save_data_func, reshape_arabic_func):
     if not st.session_state.clients.empty:
         df_clients_display = st.session_state.clients.copy()
         df_clients_display = df_clients_display.rename(columns={
-            "name": "الاسم", "phone": "الهاتف", "email": "البريد الإلكتروني", "notes": "ملاحظات"
+            "name": "الاسم", "phone": "الهاتف", "email": "البريد الإلكتروني", "notes": "ملاحظات",
+            "type": "النوع", "address": "العنوان"
         })
         
-        search_client = st.text_input("ابحث عن عميل (بالاسم أو الهاتف أو البريد الإلكتروني)", "", key="crm_search_client_input")
+        search_client = st.text_input("ابحث عن عميل (بالاسم أو الهاتف أو البريد الإلكتروني أو العنوان)", "", key="crm_search_client_input")
         filtered_clients = df_clients_display[
             df_clients_display["الاسم"].astype(str).str.contains(search_client, case=False, na=False) |
             df_clients_display["الهاتف"].astype(str).str.contains(search_client, case=False, na=False) |
-            df_clients_display["البريد الإلكتروني"].astype(str).str.contains(search_client, case=False, na=False)
+            df_clients_display["البريد الإلكتروني"].astype(str).str.contains(search_client, case=False, na=False) |
+            df_clients_display["العنوان"].astype(str).str.contains(search_client, case=False, na=False)
         ]
         
         st.dataframe(filtered_clients.set_index("client_id"))
@@ -78,8 +83,10 @@ def render_client_management(next_id_func, save_data_func, reshape_arabic_func):
                 with col_c_edit1:
                     edited_client_name = st.text_input("اسم العميل", value=current_client_data["name"], key="crm_edited_client_name_input")
                     edited_client_phone = st.text_input("رقم الهاتف", value=current_client_data["phone"], key="crm_edited_client_phone_input")
+                    edited_client_type = st.selectbox("نوع العميل", CLIENT_TYPE_OPTIONS, index=CLIENT_TYPE_OPTIONS.index(current_client_data.get("type", CLIENT_TYPE_OPTIONS[0])), key="crm_edited_client_type_select")
                 with col_c_edit2:
                     edited_client_email = st.text_input("البريد الإلكتروني", value=current_client_data["email"], key="crm_edited_client_email_input")
+                    edited_client_address = st.text_area("العنوان", value=current_client_data.get("address", ""), key="crm_edited_client_address_input")
                     edited_client_notes = st.text_area("ملاحظات", value=current_client_data["notes"], key="crm_edited_client_notes_input")
                 
                 col_buttons = st.columns(2)
@@ -89,8 +96,8 @@ def render_client_management(next_id_func, save_data_func, reshape_arabic_func):
                     delete_client_button = st.form_submit_button("🗑️ حذف العميل")
 
                 if update_client_button:
-                    st.session_state.clients.loc[st.session_state.clients["client_id"] == client_to_edit_id, ["name", "phone", "email", "notes"]] = \
-                        [edited_client_name, edited_client_phone, edited_client_email, edited_client_notes]
+                    st.session_state.clients.loc[st.session_state.clients["client_id"] == client_to_edit_id, ["name", "phone", "email", "notes", "type", "address"]] = \
+                        [edited_client_name, edited_client_phone, edited_client_email, edited_client_notes, edited_client_type, edited_client_address]
                     save_data_func()
                     st.success(f"✅ تم تحديث بيانات العميل: {reshape_arabic_func(edited_client_name)}.")
                     st.rerun()
@@ -132,7 +139,8 @@ def render_case_management(next_id_func, save_data_func, reshape_arabic_func):
                     new_case_status = st.selectbox("الحالة", CASE_STATUS_OPTIONS, key="crm_new_case_status_select")
                     new_court_date = st.date_input("تاريخ الجلسة القادمة", datetime.today() + timedelta(days=7), key="crm_new_court_date_input")
                     new_responsible_lawyer = st.text_input("المحامي المسؤول", key="crm_new_responsible_lawyer_input")
-
+                
+                new_case_priority = st.selectbox("أولوية القضية", CASE_PRIORITY_OPTIONS, key="crm_new_case_priority_select")
                 new_case_description = st.text_area("وصف القضية", key="crm_new_case_description_input")
                 new_case_notes = st.text_area("ملاحظات إضافية على القضية", key="crm_new_case_notes_input")
 
@@ -140,7 +148,16 @@ def render_case_management(next_id_func, save_data_func, reshape_arabic_func):
                 if submitted_case:
                     if new_case_name:
                         cid = next_id_func(st.session_state.cases, "case_id")
-                        st.session_state.cases.loc[len(st.session_state.cases)] = [cid, client_id_for_case, new_case_name, new_case_type, new_case_status, new_court_date, new_opposing_party, new_case_description, new_responsible_lawyer, new_case_notes]
+                        st.session_state.cases.loc[len(st.session_state.cases)] = [
+                            cid, client_id_for_case, new_case_name, new_case_type, new_case_status, 
+                            new_court_date, new_opposing_party, new_case_description, 
+                            new_responsible_lawyer, new_case_notes
+                        ]
+                        # Add new fields if they don't exist
+                        if 'priority' not in st.session_state.cases.columns:
+                            st.session_state.cases['priority'] = None
+                        st.session_state.cases.loc[st.session_state.cases['case_id'] == cid, 'priority'] = new_case_priority
+
                         save_data_func()
                         st.success(f"✅ تم إضافة القضية: {reshape_arabic_func(new_case_name)} بنجاح!")
                         st.rerun()
@@ -155,7 +172,8 @@ def render_case_management(next_id_func, save_data_func, reshape_arabic_func):
             df_cases_display = df_cases_display.rename(columns={
                 "name": "العميل", "case_name": "اسم القضية", "case_type": "نوع القضية", 
                 "status": "الحالة", "court_date": "تاريخ الجلسة", "opposing_party": "الطرف الخصم",
-                "case_description": "وصف القضية", "responsible_lawyer": "المحامي المسؤول", "notes": "ملاحظات"
+                "case_description": "وصف القضية", "responsible_lawyer": "المحامي المسؤول", "notes": "ملاحظات",
+                "priority": "الأولوية"
             })
             
             search_case = st.text_input("ابحث عن قضية (بالاسم أو العميل أو الحالة أو الطرف الخصم)", "", key="crm_search_case_input")
@@ -166,7 +184,7 @@ def render_case_management(next_id_func, save_data_func, reshape_arabic_func):
                 df_cases_display["الطرف الخصم"].astype(str).str.contains(search_case, case=False, na=False)
             ]
             
-            st.dataframe(filtered_cases[["case_id", "اسم القضية", "العميل", "نوع القضية", "الحالة", "تاريخ الجلسة", "الطرف الخصم", "المحامي المسؤول"]].set_index("case_id"))
+            st.dataframe(filtered_cases[["case_id", "اسم القضية", "العميل", "نوع القضية", "الحالة", "تاريخ الجلسة", "الطرف الخصم", "المحامي المسؤول", "الأولوية"]].set_index("case_id"))
 
             st.markdown("### ✏️ تعديل / حذف قضية")
             if not filtered_cases.empty:
@@ -195,7 +213,8 @@ def render_case_management(next_id_func, save_data_func, reshape_arabic_func):
                         edited_case_status = st.selectbox("الحالة", CASE_STATUS_OPTIONS, index=CASE_STATUS_OPTIONS.index(current_case_data["status"]), key="crm_edited_case_status_select")
                         edited_court_date = st.date_input("تاريخ الجلسة القادمة", value=current_court_date, key="crm_edited_court_date_input")
                         edited_responsible_lawyer = st.text_input("المحامي المسؤول", value=current_case_data["responsible_lawyer"], key="crm_edited_responsible_lawyer_input")
-
+                    
+                    edited_case_priority = st.selectbox("أولوية القضية", CASE_PRIORITY_OPTIONS, index=CASE_PRIORITY_OPTIONS.index(current_case_data.get("priority", CASE_PRIORITY_OPTIONS[0])), key="crm_edited_case_priority_select")
                     edited_case_description = st.text_area("وصف القضية", value=current_case_data["case_description"], key="crm_edited_case_description_input")
                     edited_case_notes = st.text_area("ملاحظات إضافية على القضية", value=current_case_data["notes"], key="crm_edited_case_notes_input")
 
@@ -207,8 +226,11 @@ def render_case_management(next_id_func, save_data_func, reshape_arabic_func):
 
                     if update_case_button:
                         st.session_state.cases.loc[st.session_state.cases["case_id"] == case_to_edit_id, 
-                            ["client_id", "case_name", "case_type", "status", "court_date", "opposing_party", "case_description", "responsible_lawyer", "notes"]] = \
-                            [edited_client_id_for_case, edited_case_name, edited_case_type, edited_case_status, edited_court_date, edited_opposing_party, edited_case_description, edited_responsible_lawyer, edited_case_notes]
+                            ["client_id", "case_name", "case_type", "status", "court_date", "opposing_party", 
+                             "case_description", "responsible_lawyer", "notes", "priority"]] = \
+                            [edited_client_id_for_case, edited_case_name, edited_case_type, edited_case_status, 
+                             edited_court_date, edited_opposing_party, edited_case_description, 
+                             edited_responsible_lawyer, edited_case_notes, edited_case_priority]
                         save_data_func()
                         st.success(f"✅ تم تحديث بيانات القضية: {reshape_arabic_func(edited_case_name)}.")
                         st.rerun()
@@ -235,7 +257,7 @@ def render_reminder_management(next_id_func, save_data_func, reshape_arabic_func
         with st.form("add_reminder_form", clear_on_submit=True):
             reminder_type = st.radio("الربط بـ:", REMINDER_RELATED_TYPES, key="crm_reminder_related_type_radio")
             
-            related_entity_id = None
+            related_entity_id = 0 # Default for 'عام' or if no entity selected
             if reminder_type == "عميل":
                 if not st.session_state.clients.empty:
                     client_names = st.session_state.clients['name'].tolist()
@@ -243,7 +265,6 @@ def render_reminder_management(next_id_func, save_data_func, reshape_arabic_func
                     related_entity_id = st.session_state.clients[st.session_state.clients["name"] == selected_client_for_reminder]["client_id"].iloc[0]
                 else:
                     st.warning("لا يوجد عملاء لربط التذكير بهم. يرجى إضافة عميل أولاً أو اختر 'قضية' أو 'عام'.")
-                    related_entity_id = 0 # Indicate no valid entity selected
             elif reminder_type == "قضية":
                 if not st.session_state.cases.empty:
                     case_names = st.session_state.cases['case_name'].tolist()
@@ -251,10 +272,7 @@ def render_reminder_management(next_id_func, save_data_func, reshape_arabic_func
                     related_entity_id = st.session_state.cases[st.session_state.cases["case_name"] == selected_case_for_reminder]["case_id"].iloc[0]
                 else:
                     st.warning("لا توجد قضايا لربط التذكير بها. يرجى إضافة قضية أولاً أو اختر 'عميل' أو 'عام'.")
-                    related_entity_id = 0 # Indicate no valid entity selected
-            elif reminder_type == "عام":
-                related_entity_id = 0 # No specific relation for general reminders
-
+            
             new_reminder_description = st.text_area("وصف التذكير / المهمة", key="crm_new_reminder_description_input")
             new_reminder_date = st.date_input("تاريخ التذكير", datetime.today() + timedelta(days=1), key="crm_new_reminder_date_input")
             
@@ -370,13 +388,22 @@ def render_invoice_management(next_id_func, save_data_func, reshape_arabic_func)
                     new_invoice_amount = st.number_input("المبلغ (ريال سعودي)", min_value=0.0, step=50.0, format="%.2f", key="crm_new_invoice_amount_input")
                     new_invoice_date = st.date_input("تاريخ الفاتورة", datetime.today(), key="crm_new_invoice_date_input")
                 with col_inv2:
+                    new_invoice_due_date = st.date_input("تاريخ الاستحقاق", datetime.today() + timedelta(days=30), key="crm_new_invoice_due_date_input")
                     new_invoice_paid = st.checkbox("تم الدفع؟", key="crm_new_invoice_paid_check")
                 
                 submitted_invoice = st.form_submit_button("➕ حفظ الفاتورة")
                 if submitted_invoice:
                     if new_invoice_amount > 0:
                         iid = next_id_func(st.session_state.invoices, "invoice_id")
-                        st.session_state.invoices.loc[len(st.session_state.invoices)] = [iid, client_id_for_inv, case_id_for_inv, new_invoice_amount, new_invoice_paid, new_invoice_date]
+                        st.session_state.invoices.loc[len(st.session_state.invoices)] = [
+                            iid, client_id_for_inv, case_id_for_inv, new_invoice_amount, 
+                            new_invoice_paid, new_invoice_date, new_invoice_due_date
+                        ]
+                        # Add new fields if they don't exist
+                        if 'due_date' not in st.session_state.invoices.columns:
+                            st.session_state.invoices['due_date'] = None
+                        st.session_state.invoices.loc[st.session_state.invoices['invoice_id'] == iid, 'due_date'] = new_invoice_due_date
+
                         save_data_func()
                         st.success(f"✅ تم إضافة فاتورة بمبلغ: {new_invoice_amount:,.2f} ر.س بنجاح!")
                         st.rerun()
@@ -397,7 +424,8 @@ def render_invoice_management(next_id_func, save_data_func, reshape_arabic_func)
 
             df_invoices_display['الحالة'] = df_invoices_display['paid'].apply(lambda x: "مدفوعة" if x else "غير مدفوعة")
             df_invoices_display = df_invoices_display.rename(columns={
-                "name": "العميل", "case_name": "القضية المرتبطة", "amount": "المبلغ", "date": "التاريخ"
+                "name": "العميل", "case_name": "القضية المرتبطة", "amount": "المبلغ", 
+                "date": "تاريخ الفاتورة", "due_date": "تاريخ الاستحقاق"
             })
 
             # Filter by payment status
@@ -409,7 +437,7 @@ def render_invoice_management(next_id_func, save_data_func, reshape_arabic_func)
             else:
                 filtered_invoices = df_invoices_display
             
-            st.dataframe(filtered_invoices[["invoice_id", "العميل", "القضية المرتبطة", "المبلغ", "التاريخ", "الحالة"]].set_index("invoice_id"))
+            st.dataframe(filtered_invoices[["invoice_id", "العميل", "القضية المرتبطة", "المبلغ", "تاريخ الفاتورة", "تاريخ الاستحقاق", "الحالة"]].set_index("invoice_id"))
 
             st.markdown("### ✏️ تعديل / حذف فاتورة")
             if not filtered_invoices.empty:
@@ -424,6 +452,7 @@ def render_invoice_management(next_id_func, save_data_func, reshape_arabic_func)
                 with st.form("edit_invoice_form"):
                     edited_invoice_amount = st.number_input("المبلغ (ريال سعودي)", value=float(current_invoice_data["amount"]), min_value=0.0, step=50.0, format="%.2f", key="crm_edited_invoice_amount_input")
                     edited_invoice_date = st.date_input("تاريخ الفاتورة", value=current_invoice_data["date"], key="crm_edited_invoice_date_input")
+                    edited_invoice_due_date = st.date_input("تاريخ الاستحقاق", value=current_invoice_data.get("due_date", datetime.today().date() + timedelta(days=30)), key="crm_edited_invoice_due_date_input")
                     edited_invoice_paid = st.checkbox("تم الدفع؟", value=current_invoice_data["paid"], key="crm_edited_invoice_paid_check")
 
                     col_inv_buttons = st.columns(2)
@@ -433,8 +462,8 @@ def render_invoice_management(next_id_func, save_data_func, reshape_arabic_func)
                         delete_invoice_button = st.form_submit_button("🗑️ حذف الفاتورة")
 
                     if update_invoice_button:
-                        st.session_state.invoices.loc[st.session_state.invoices["invoice_id"] == invoice_to_edit_id, ["amount", "paid", "date"]] = \
-                            [edited_invoice_amount, edited_invoice_paid, edited_invoice_date]
+                        st.session_state.invoices.loc[st.session_state.invoices["invoice_id"] == invoice_to_edit_id, ["amount", "paid", "date", "due_date"]] = \
+                            [edited_invoice_amount, edited_invoice_paid, edited_invoice_date, edited_invoice_due_date]
                         save_data_func()
                         st.success(f"✅ تم تحديث الفاتورة رقم {invoice_to_edit_id}.")
                         st.rerun()
