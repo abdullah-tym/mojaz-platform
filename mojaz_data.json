@@ -13,6 +13,13 @@
             "phone": "aa",
             "email": "",
             "notes": ""
+        },
+        {
+            "client_id": 3,
+            "name": "aaa",
+            "phone": "aaa",
+            "email": "",
+            "notes": ""
         }
     ],
     "cases": [
