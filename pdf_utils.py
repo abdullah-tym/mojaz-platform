@@ -166,4 +166,4 @@ def generate_contract_pdf(contract_type, data, signature_img_data=None, stamp_fi
             if tmp_stamp_path and os.path.exists(tmp_stamp_path):
                 os.unlink(tmp_stamp_path)
 
-    return pdf.output(dest="S")
+    return bytes(pdf.output(dest="S")) # CORRECTED: Explicitly convert to bytes
