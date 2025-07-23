@@ -1,1 +1,14 @@
+streamlit
+pandas
+plotly
+openpyxl
+fpdf
+pdfkit  # optional; keep if you generate PDFs using wkhtmltopdf
+
+arabic_reshaper
+python-bidi
+matplotlib
+google-generativeai
+tabulate
 streamlit-drawable-canvas
+Pillow  # ✅ correct name for PIL
