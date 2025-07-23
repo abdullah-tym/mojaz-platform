@@ -1,0 +1,8 @@
+mojaz-platform/
+├── main_app.py
+├── config.py
+├── data_persistence.py
+├── pdf_utils.py
+├── crm_modules.py
+├── styles.py
+└── Amiri-Regular.ttf
